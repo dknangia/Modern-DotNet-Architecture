@@ -1,1 +1,4 @@
-<Solution />
+<Solution>
+  <Project Path="TaskFlow.Application/TaskFlow.Application.csproj" />
+  <Project Path="TaskFlow.Domain/TaskFlow.Domain.csproj" />
+</Solution>
