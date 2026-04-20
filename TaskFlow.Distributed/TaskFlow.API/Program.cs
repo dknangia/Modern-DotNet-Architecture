@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+using TaskFlow.Infrastructure.Persistence;
 
 namespace TaskFlow.API
 {
@@ -9,7 +11,13 @@ namespace TaskFlow.API
 
             // Add services to the container.
 
-            builder.Services.AddControllers();
+            builder.Services.AddDbContext<ApplicationDbContext>(options =>
+                options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+            builder.Services.AddControllers()
+                .AddJsonOptions(options =>
+                    { options.JsonSerializerOptions.PropertyNameCaseInsensitive = true; }
+                );
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
             builder.Services.AddOpenApi();
 
