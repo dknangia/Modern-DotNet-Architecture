@@ -3,6 +3,9 @@
   <Folder Name="/Docker/">
     <File Path="Docker/docker-compose.yml" />
   </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path="../README.md" />
+  </Folder>
   <Project Path="TaskFlow.API/TaskFlow.API.csproj" />
   <Project Path="TaskFlow.Application/TaskFlow.Application.csproj" />
   <Project Path="TaskFlow.Domain/TaskFlow.Domain.csproj" />
