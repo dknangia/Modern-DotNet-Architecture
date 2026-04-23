@@ -19,12 +19,31 @@ namespace TaskFlow.Worker
             var factory = new ConnectionFactory() { HostName = "localhost" };
             using var connection = await factory.CreateConnectionAsync();
             using var channel = await connection.CreateChannelAsync();
+            // Define these at the start of your methods in BOTH files
+            var queueName = "task_queue";
+            var dlxExchange = "task_failure_exchange";
+            var dlqQueue = "task_queue_error";
 
-            await channel.QueueDeclareAsync(queue: "task_queue", durable: true, exclusive: false, autoDelete: false, arguments: null);
+            // 1. Declare the DLX and DLQ (Safe to do in both places)
+            await channel.ExchangeDeclareAsync(dlxExchange, ExchangeType.Direct);
+            await channel.QueueDeclareAsync(dlqQueue, durable: true, exclusive: false, autoDelete: false);
+            await channel.QueueBindAsync(dlqQueue, dlxExchange, "task_failed");
 
-            await channel.BasicQosAsync(prefetchSize: 0, prefetchCount: 1, global: false);
+            // 2. The critical "Blueprint" (Arguments)
+            var arguments = new Dictionary<string, object?>
+                    {
+                        { "x-dead-letter-exchange", dlxExchange },
+                        { "x-dead-letter-routing-key", "task_failed" }
+                    };
+
+            // 3. Declare the main queue
+            await channel.QueueDeclareAsync(
+                queue: queueName,
+                durable: true,
+                exclusive: false,
+                autoDelete: false,
+                arguments: arguments); // This MUST be the same in both projects
             var consumer = new AsyncEventingBasicConsumer(channel);
-
             consumer.ReceivedAsync += async (model, ea) =>
             {
                 var body = ea.Body.ToArray();
@@ -44,13 +63,18 @@ namespace TaskFlow.Worker
                             return;
                         }
 
+                        // Checking IDEMPOTENCY: If the task is already completed, we skip processing to avoid duplicate work.
                         if (taskData.Status == TaskStatus.Completed)
                         {
                             logger.LogInformation($"Task :{taskData.Id} is already completed. Skipping processing.");
                             return;
                         }
 
-                        await ProcessTaskAsync(taskData);
+                        using (logger.BeginScope(new Dictionary<string, object> { ["TaskId"] = taskData.Id }))
+                        {
+                            logger.LogInformation("Processing task from queue...");
+                            await ProcessTaskAsync(taskData);
+                        }
                         await channel.BasicAckAsync(deliveryTag: ea.DeliveryTag, multiple: false);
                     }
 
@@ -58,8 +82,8 @@ namespace TaskFlow.Worker
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError(ex, $"Error processing message: {message}");
-                    await channel.BasicNackAsync(deliveryTag: ea.DeliveryTag, false, requeue: true);
+                    logger.LogError(ex, "Permanent failure for message. Moving to Dead Letter Queue.");
+                    await channel.BasicNackAsync(deliveryTag: ea.DeliveryTag, false, requeue: false);
                 }
 
             };
